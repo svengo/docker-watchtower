@@ -1,35 +1,38 @@
-# Build image
+#
+# Builder
+#
 
-FROM golang:latest as watchtower
-
+FROM golang:alpine as builder
 RUN \
-  cd $GOPATH/src && \
-  mkdir --parents github.com/v2tec && \
-  cd github.com/v2tec && \
+  apk add --no-cache \
+    alpine-sdk \
+    ca-certificates \
+    git \
+    tzdata && \
+  \
+  mkdir --parents $GOPATH/src/github.com/v2tec && \
+  cd $GOPATH/src/github.com/v2tec && \
   git clone https://github.com/v2tec/watchtower.git && \
   cd watchtower && \
-  go get -u github.com/Masterminds/glide && \
-  glide install %&& \
+  \
+  curl https://glide.sh/get | sh && \
+  glide install && \
+  \
   CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' . && \
   go test
 
 
-# Alpine
-
-FROM alpine:latest as alpine
-RUN apk add --no-cache \
-    ca-certificates \
-    tzdata
-
-
-# watchtower image
+#
+# watchtower
+#
 
 FROM scratch
+
 LABEL "com.centurylinklabs.watchtower"="true"
 
-# copy files from other containers
-COPY --from=alpine /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=alpine /usr/share/zoneinfo /usr/share/zoneinfo
-COPY --from=watchtower /go/src/github.com/v2tec/watchtower/watchtower /
+# copy files from other container
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /go/src/github.com/v2tec/watchtower/watchtower /watchtower
 
 ENTRYPOINT ["/watchtower"]
